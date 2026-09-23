@@ -57,7 +57,7 @@ export const DEFAULT_CAPABILITIES = {
   thinkingFormat: null,
   thinkingCanDisable: true,  // false → model cannot turn thinking off (clamp to min instead of disable)
   thinkingRange: null,       // { min, max } for budget formats; null = no clamp
-  thinkingEffortSupported: false, // zai format only: model accepts a reasoning_effort level (GLM-5.2+; older GLM ignores it)
+  thinkingEffortSupported: false, // explicit effort support; also gates reasoning_effort emission for zai
   // limits (tokens)
   contextWindow: 200000,
   maxOutput: 64000,
@@ -83,6 +83,10 @@ export function capabilitiesFromServiceKind(kind) {
  * otherwise mis-match. Only declare deltas vs DEFAULT.
  */
 export const MODEL_CAPABILITIES = {
+  // Opus 5.5 is permanently adaptive; effort controls depth. Exact contract:
+  // https://platform.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5
+  // Optional thinkingEffortDefault is model-specific; other models retain legacy auto handling.
+  "claude-opus-5-5": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, thinkingEffortSupported: true, thinkingEffortDefault: "medium", contextWindow: 1000000, maxOutput: 128000 },
   // Claude Fable 5.1, Opus 5, 4.6/4.7/4.8, and Kiro Sonnet 5 have 1M context + adaptive thinking (override generic claude pattern)
   "claude-fable-5-1": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-5":     { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
