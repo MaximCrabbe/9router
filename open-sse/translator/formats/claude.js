@@ -7,6 +7,7 @@ import { resolveSessionId } from "../../utils/sessionManager.js";
 import { isValidClaudeSignature } from "../../utils/claudeSignature.js";
 import { PROVIDERS } from "../../providers/index.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
+import { applyThinking, extractThinking } from "../concerns/thinkingUnified.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 
 const CACHE_CONTROL_5M = { type: "ephemeral" };
@@ -203,6 +204,22 @@ function hasForeignServerToolUseId(block) {
 // 5. server_tool_use blocks carrying a foreign (non-srvtoolu_) id → rejected outright
 export function normalizeClaudePassthrough(body, model = "") {
   if (!body || typeof body !== "object") return body;
+
+  // Permanently adaptive, effort-capable models reject disabled/manual thinking.
+  // Reuse the shared clamp only for incompatible intent; valid native requests
+  // (including omitted effort and other output_config fields) stay lossless.
+  const caps = getCapabilitiesForModel(null, model);
+  const intent = extractThinking(body);
+  if (caps.thinkingFormat === "claude-adaptive" && !caps.thinkingCanDisable && caps.thinkingEffortSupported
+    && (intent?.mode === "none" || body.output_config?.effort === "auto" || body.reasoning_effort === "auto"
+      || body.thinking?.type === "disabled" || body.thinking?.type === "enabled")) {
+    const normalized = applyThinking("claude", model, { thinking: body.thinking }, null, intent);
+    if (normalized.thinking) body.thinking = normalized.thinking;
+    else delete body.thinking;
+    delete body.reasoning_effort;
+    delete body.enable_thinking;
+    body.output_config = { ...body.output_config, ...normalized.output_config };
+  }
 
   // 1. Downgrade adaptive thinking for models that don't support it
   if (body.thinking?.type === "adaptive" && ADAPTIVE_THINKING_UNSUPPORTED.test(model)) {
