@@ -8,6 +8,7 @@ import { isValidClaudeSignature } from "../../utils/claudeSignature.js";
 import { PROVIDERS } from "../../providers/index.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { isDeepSeekModel } from "../../providers/models/helpers.js";
+import { applyThinking, extractThinking } from "../concerns/thinkingUnified.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 
 const CACHE_CONTROL_5M = { type: "ephemeral" };
@@ -207,6 +208,7 @@ function hasForeignServerToolUseId(block) {
 
 // Normalize a native Claude passthrough body to match Anthropic Messages API spec.
 // Newer Cowork/Claude Code clients emit beta-only shapes that OAuth endpoints reject:
+// 0. disabled/manual/auto thinking intent → unsupported on permanently adaptive effort models (Opus 5.5)
 // 1. thinking.type "adaptive" → unsupported on Haiku
 // 2. output_config.effort → unsupported on Haiku
 // 3. bare content-block objects (content: {block} instead of [{block}]) → wrapped first
@@ -214,6 +216,23 @@ function hasForeignServerToolUseId(block) {
 // 5. server_tool_use blocks carrying a foreign (non-srvtoolu_) id → rejected outright
 export function normalizeClaudePassthrough(body, model = "") {
   if (!body || typeof body !== "object") return body;
+
+  // 0. Permanently adaptive, effort-capable models (Opus 5.5) reject disabled/manual
+  // thinking. Reuse the shared clamp only for incompatible intent; valid native
+  // requests (including omitted effort and other output_config fields) stay lossless.
+  const caps = getCapabilitiesForModel(null, model);
+  if (caps.thinkingFormat === "claude-adaptive" && !caps.thinkingCanDisable && caps.thinkingEffortSupported) {
+    const intent = extractThinking(body);
+    if (intent?.mode === "none" || body.output_config?.effort === "auto" || body.reasoning_effort === "auto"
+      || body.thinking?.type === "disabled" || body.thinking?.type === "enabled") {
+      const normalized = applyThinking("claude", model, { thinking: body.thinking }, null, intent);
+      if (normalized.thinking) body.thinking = normalized.thinking;
+      else delete body.thinking;
+      delete body.reasoning_effort;
+      delete body.enable_thinking;
+      body.output_config = { ...body.output_config, ...normalized.output_config };
+    }
+  }
 
   // 1. Downgrade adaptive thinking for models that don't support it
   if (body.thinking?.type === "adaptive" && ADAPTIVE_THINKING_UNSUPPORTED.test(model)) {

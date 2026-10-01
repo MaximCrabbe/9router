@@ -251,7 +251,9 @@ function stripAll(body) {
 }
 
 // Apply unified thinking config to body in the resolved provider-native format.
-function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
+// `display` is the effective display (explicit thinking.display, else the one inferred
+// for OpenAI clients); `bodyDisplay` is only the explicit thinking.display.
+function applyFormat(fmt, body, cfg, caps, supportedLevels, display, bodyDisplay) {
   const none = cfg.mode === "none";
   const canDisable = caps.thinkingCanDisable !== false;
   // Model cannot disable thinking → clamp "none" to minimal effort instead.
@@ -267,13 +269,21 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
     case "claude-adaptive": {
       if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
       // Models that can disable thinking need the explicit adaptive switch.
-      // Permanently adaptive models such as Fable 5.1 accept effort directly.
+      // Permanently adaptive models (Fable 5.1, Opus 5.5) accept effort directly and
+      // only need the switch to carry a valid display the client set explicitly on
+      // thinking.display; the display inferred for OpenAI clients is not added there.
       if (canDisable) body.thinking = { type: "adaptive", ...(display ? { display } : {}) };
+      else if (bodyDisplay === "omitted" || bodyDisplay === "summarized") body.thinking = { type: "adaptive", display: bodyDisplay };
       else delete body.thinking;
-      const level = toLevel(eff);
+      let level = toLevel(eff);
+      // Keep the always-on clamp, but use the lowest supported level where the
+      // model declares explicit effort support (Opus 5.5 has no "minimal").
+      if (level === "minimal" && caps.thinkingEffortSupported) level = supportedLevels?.[0] || "low";
+      // auto → model-specific default when declared, else the legacy "high".
+      if (level === "auto") level = caps.thinkingEffortDefault || "high";
       // xhigh is model-gated (Opus/Sonnet 4.6 reject it) — clamp when not advertised.
-      body.output_config = { effort: level === "auto" ? "high"
-        : level === "xhigh" && !supportedLevels?.includes("xhigh") ? "high" : level };
+      if (level === "xhigh" && !supportedLevels?.includes("xhigh")) level = "high";
+      body.output_config = { effort: level };
       break;
     }
     case "claude-budget": {
@@ -405,8 +415,9 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   // Anthropic's `display` (summarized | omitted) decides whether thinking text
   // comes back at all; keep what the client asked for instead of resetting it.
   // An OpenAI-shaped client's ask arrives via the captured intent instead.
-  const display = typeof body.thinking?.display === "string" ? body.thinking.display : intent?.display;
+  const bodyDisplay = typeof body.thinking?.display === "string" ? body.thinking.display : undefined;
+  const display = bodyDisplay ?? intent?.display;
   stripAll(body);
-  applyFormat(fmt, body, cfg, caps, supportedLevels, display);
+  applyFormat(fmt, body, cfg, caps, supportedLevels, display, bodyDisplay);
   return body;
 }

@@ -60,7 +60,7 @@ export const DEFAULT_CAPABILITIES = {
   thinkingFormat: null,
   thinkingCanDisable: true,  // false → model cannot turn thinking off (clamp to min instead of disable)
   thinkingRange: null,       // { min, max } for budget formats; null = no clamp
-  thinkingEffortSupported: false, // zai format only: model accepts a reasoning_effort level (GLM-5.2+; older GLM ignores it)
+  thinkingEffortSupported: false, // explicit effort support; also gates reasoning_effort emission for zai (GLM-5.2+; older GLM ignores it)
   // limits (tokens)
   contextWindow: 200000,
   maxOutput: 64000,
@@ -86,6 +86,11 @@ export function capabilitiesFromServiceKind(kind) {
  * otherwise mis-match. Only declare deltas vs DEFAULT.
  */
 export const MODEL_CAPABILITIES = {
+  // Opus 5.5 (Anthropic id) is permanently adaptive; effort controls depth. Exact contract:
+  // https://platform.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5
+  // Optional thinkingEffortDefault is model-specific; other models retain legacy auto handling.
+  // Kiro's dotted "claude-opus-5.5*" ids below keep their own (upstream) contract.
+  "claude-opus-5-5": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, thinkingEffortSupported: true, thinkingEffortDefault: "medium", contextWindow: 1000000, maxOutput: 128000 },
   // Claude Fable 5.1, Opus 5.5/5, 4.6/4.7/4.8, and Kiro Sonnet 5 have 1M context + adaptive thinking (override generic claude pattern)
   "claude-fable-5-1": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 },
   // Claude Opus 5.5 — experimental preview on Kiro (rateMultiplier: 2.0, 1M context) (#4410)
@@ -193,6 +198,7 @@ export const PROVIDER_CAPABILITIES = {
     "glm-5.3-flash": { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   },
   "codex": {
+    "gpt-6.1-sol":               { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: 128000 },
     "gpt-6-astra":               { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: 128000 },
     "gpt-6-sol":                 { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: 128000 },
     "gpt-6-luna":                { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: 128000 },

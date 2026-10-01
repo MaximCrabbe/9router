@@ -40,6 +40,10 @@ const CLAUDE_NO_XHIGH = ["none", "low", "medium", "high", "max"];
 
 // Model-name pattern overrides (glob, first match wins) — more precise than format default.
 const PATTERN_THINKING = [
+  // Exact Opus 5.5 IDs (including vendor prefixes) support all five effort levels;
+  // "none" is removed by its thinkingCanDisable:false capability.
+  { pattern: "claude-opus-5-5", levels: L.budgetX },
+  { pattern: "*/claude-opus-5-5", levels: L.budgetX },
   { pattern: "*claude*4.6*", levels: CLAUDE_NO_XHIGH },
   { pattern: "*claude*4-6*", levels: CLAUDE_NO_XHIGH },
   { provider: "codex", pattern: "*gpt-6*", levels: CODEX_GPT_5_6_LEVELS },
