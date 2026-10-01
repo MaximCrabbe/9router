@@ -74,13 +74,22 @@ describe("Opus 5.5 exact capability metadata", () => {
     }
   });
 
-  it.each(["claude-opus-5", "claude-opus-5-50", "claude-opus-5-5-preview", "claude-opus-4-7", "claude-sonnet-4-6"])(
-    "keeps the prior contract for %s", (model) => {
+  // v0.5.95 port: upstream 7894f3d3 gave every claude-adaptive model the xhigh
+  // level, except Opus/Sonnet 4.6 (CLAUDE_NO_XHIGH). The non-5.5 contract here
+  // follows that upstream level set; only "none" (can disable) is asserted as before.
+  it.each([
+    ["claude-opus-5", ["none", "low", "medium", "high", "xhigh", "max"]],
+    ["claude-opus-5-50", ["none", "low", "medium", "high", "xhigh", "max"]],
+    ["claude-opus-5-5-preview", ["none", "low", "medium", "high", "xhigh", "max"]],
+    ["claude-opus-4-7", ["none", "low", "medium", "high", "xhigh", "max"]],
+    ["claude-sonnet-4-6", ["none", "low", "medium", "high", "max"]],
+  ])(
+    "keeps the prior contract for %s", (model, levels) => {
       expect(getCapabilitiesForModel("claude", model)).toMatchObject({
         thinkingCanDisable: true, thinkingEffortSupported: false,
       });
       expect(getCapabilitiesForModel("claude", model).thinkingEffortDefault).toBeUndefined();
-      expect(getThinkingLevels("claude", model)).toEqual(["none", "low", "medium", "high", "max"]);
+      expect(getThinkingLevels("claude", model)).toEqual(levels);
     }
   );
 });
@@ -214,11 +223,20 @@ describe("existing Claude emitted-payload regressions", () => {
     }
   );
 
-  it.each(["claude-opus-5", "claude-opus-4-7", "claude-sonnet-4-6", "claude-fable-5-1"])(
-    "%s keeps xhigh → high normalization", async (model) => {
+  // v0.5.95 port: upstream 7894f3d3 passes xhigh through for claude-adaptive
+  // models that advertise it and clamps it to high only on Opus/Sonnet 4.6.
+  // Upstream 90b06934 adds display "summarized" for OpenAI clients that set
+  // reasoning_effort; always-on Fable keeps omitting the thinking switch.
+  it.each([
+    ["claude-opus-5", "xhigh"],
+    ["claude-opus-4-7", "xhigh"],
+    ["claude-sonnet-4-6", "high"],
+    ["claude-fable-5-1", "xhigh"],
+  ])(
+    "%s keeps upstream xhigh gating", async (model, effort) => {
       const sent = await emit(routes[0], { reasoning_effort: "xhigh" }, model);
-      expect(sent.output_config).toEqual({ effort: "high" });
-      expect(sent.thinking).toEqual(model === "claude-fable-5-1" ? undefined : { type: "adaptive" });
+      expect(sent.output_config).toEqual({ effort });
+      expect(sent.thinking).toEqual(model === "claude-fable-5-1" ? undefined : { type: "adaptive", display: "summarized" });
     }
   );
 
@@ -228,9 +246,31 @@ describe("existing Claude emitted-payload regressions", () => {
     expect(sent.output_config).toBeUndefined();
   });
 
+  it.each(["claude-opus-5.5", "claude-opus-5.5-thinking", "claude-opus-5.5-agentic", "claude-opus-5.5-thinking-agentic"])(
+    "Kiro %s keeps its upstream (e78b766a) contract", (model) => {
+      const caps = getCapabilitiesForModel("kiro", model);
+      expect(caps).toMatchObject({ thinkingFormat: "claude-adaptive", thinkingCanDisable: true, thinkingEffortSupported: false });
+      expect(caps.thinkingEffortDefault).toBeUndefined();
+      expect(getThinkingLevels("kiro", model)).toEqual(["none", "low", "medium", "high", "xhigh", "max"]);
+    }
+  );
+
+  it.each([
+    ["Chat Completions reasoning_effort", "openai", { reasoning_effort: "high" }],
+    ["Responses reasoning.summary", "openai-responses", { reasoning: { effort: "high", summary: "auto" } }],
+  ])("OpenAI-inferred display (%s, upstream 90b06934) stays on Opus 5 and adds no switch on Opus 5.5", async (_name, source, fields) => {
+    const opus5 = await emit({ source }, fields, "claude-opus-5");
+    expect(opus5.thinking).toEqual({ type: "adaptive", display: "summarized" });
+    proxyAwareFetch.mockClear();
+    const opus55 = await emit({ source }, fields);
+    expect(opus55.thinking).toBeUndefined();
+    expect(opus55.output_config).toEqual({ effort: "high" });
+  });
+
   it("Haiku still uses budget thinking", async () => {
     const sent = await emit(routes[0], { reasoning_effort: "high" }, "claude-haiku-4-5-20251001");
-    expect(sent.thinking).toEqual({ type: "enabled", budget_tokens: 24576 });
+    // v0.5.95 port: upstream 90b06934 adds display "summarized" for OpenAI clients.
+    expect(sent.thinking).toEqual({ type: "enabled", budget_tokens: 24576, display: "summarized" });
     expect(sent.output_config).toBeUndefined();
   });
 });
