@@ -187,7 +187,13 @@ export function canonicalizeUsage(usage) {
   if (usage.cached_tokens === undefined &&
       (usage.cache_read_input_tokens !== undefined || usage.cache_creation_input_tokens !== undefined)) {
     cached = num(usage.cache_read_input_tokens);
-    prompt = prompt + cached + cacheCreation;
+    // Fold onto Anthropic's cache-EXCLUSIVE input_tokens when present. The
+    // streaming claude->openai translator shares state.usage with the usage
+    // tracker and writes an already-folded prompt_tokens next to input_tokens
+    // and the cache fields; folding onto that prompt_tokens counted every
+    // cache read/write twice.
+    const base = usage.input_tokens !== undefined ? num(usage.input_tokens) : prompt;
+    prompt = base + cached + cacheCreation;
   } else {
     // OpenAI/Gemini path (or already-canonical input): prompt already includes cached_tokens.
     // Mirror the cacheCreation fallback above: buildUsage() only ever emits the
