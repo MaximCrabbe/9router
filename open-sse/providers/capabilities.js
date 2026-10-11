@@ -61,6 +61,10 @@ export const DEFAULT_CAPABILITIES = {
   thinkingCanDisable: true,  // false → model cannot turn thinking off (clamp to min instead of disable)
   thinkingRange: null,       // { min, max } for budget formats; null = no clamp
   thinkingEffortSupported: false, // explicit effort support; also gates reasoning_effort emission for zai (GLM-5.2+; older GLM ignores it)
+  // Permanently adaptive Claude only: also carry the display "summarized" inferred for
+  // OpenAI-format clients (reasoning_effort / reasoning.summary). Without it the model
+  // streams no thinking text, only pings, for the whole thinking phase.
+  inferredThinkingDisplay: false,
   // limits (tokens)
   contextWindow: 200000,
   maxOutput: 64000,
@@ -90,7 +94,7 @@ export const MODEL_CAPABILITIES = {
   // https://platform.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5
   // Optional thinkingEffortDefault is model-specific; other models retain legacy auto handling.
   // Kiro's dotted "claude-opus-5.5*" ids below keep their own (upstream) contract.
-  "claude-opus-5-5": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, thinkingEffortSupported: true, thinkingEffortDefault: "medium", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-5-5": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, thinkingEffortSupported: true, thinkingEffortDefault: "medium", inferredThinkingDisplay: true, contextWindow: 1000000, maxOutput: 128000 },
   // Claude Fable 5.1, Opus 5.5/5, 4.6/4.7/4.8, and Kiro Sonnet 5 have 1M context + adaptive thinking (override generic claude pattern)
   "claude-fable-5-1": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 },
   // Claude Opus 5.5 — experimental preview on Kiro (rateMultiplier: 2.0, 1M context) (#4410)
