@@ -131,7 +131,11 @@ describe.each(routes)("$name → serialized Anthropic request", (route) => {
   ])("resolves %s to the exact-model medium default", async (_name, fields) => {
     const sent = await emit(route, fields);
     expect(sent.output_config).toEqual({ effort: "medium" });
-    expect(sent.thinking).toBeUndefined();
+    // A translated reasoning_effort asks for reasoning text, so Opus 5.5 carries the
+    // inferred "summarized" display; native passthrough and Anthropic effort add none.
+    expect(sent.thinking).toEqual(fields.reasoning_effort && !route.native
+      ? { type: "adaptive", display: "summarized" }
+      : undefined);
   });
 
   if (route.source === "claude") {
@@ -258,13 +262,28 @@ describe("existing Claude emitted-payload regressions", () => {
   it.each([
     ["Chat Completions reasoning_effort", "openai", { reasoning_effort: "high" }],
     ["Responses reasoning.summary", "openai-responses", { reasoning: { effort: "high", summary: "auto" } }],
-  ])("OpenAI-inferred display (%s, upstream 90b06934) stays on Opus 5 and adds no switch on Opus 5.5", async (_name, source, fields) => {
+  ])("OpenAI-inferred display (%s, upstream 90b06934) reaches Opus 5 and Opus 5.5, not Fable", async (_name, source, fields) => {
     const opus5 = await emit({ source }, fields, "claude-opus-5");
     expect(opus5.thinking).toEqual({ type: "adaptive", display: "summarized" });
     proxyAwareFetch.mockClear();
+    // Opus 5.5 opts in (inferredThinkingDisplay): without the display it streams
+    // only pings for the whole thinking phase and OpenAI clients see silence.
     const opus55 = await emit({ source }, fields);
-    expect(opus55.thinking).toBeUndefined();
+    expect(opus55.thinking).toEqual({ type: "adaptive", display: "summarized" });
     expect(opus55.output_config).toEqual({ effort: "high" });
+    // Summaries need redact-thinking dropped from the beta header, else they arrive blank.
+    const [, options] = proxyAwareFetch.mock.calls[0];
+    expect(options.headers["Anthropic-Beta"]).not.toContain("redact-thinking-2026-02-12");
+    proxyAwareFetch.mockClear();
+    const fable = await emit({ source }, fields, "claude-fable-5-1");
+    expect(fable.thinking).toBeUndefined();
+  });
+
+  it("Opus 5.5 without reasoning intent keeps redact-thinking and no switch", async () => {
+    const sent = await emit(routes[0], {});
+    expect(sent.thinking).toBeUndefined();
+    const [, options] = proxyAwareFetch.mock.calls[0];
+    expect(options.headers["Anthropic-Beta"]).toContain("redact-thinking-2026-02-12");
   });
 
   it("Haiku still uses budget thinking", async () => {

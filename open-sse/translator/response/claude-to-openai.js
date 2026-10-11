@@ -104,6 +104,24 @@ export function claudeToOpenAIResponse(chunk, state) {
       break;
     }
 
+    case "ping": {
+      // Anthropic sends `ping` (~every 30s) while the model thinks without
+      // streaming text: redacted/omitted thinking, or long gaps between summary
+      // deltas. Dropping it left OpenAI-format clients minutes without a single
+      // chunk, so they aborted the stream as stale mid-thought. Forward it as a
+      // choiceless chunk (same shape as the usage trailer): clients skip its
+      // content, but it proves liveness. Never after the finish chunk.
+      if (!state.messageId || state.finishReasonSent) break;
+      results.push({
+        id: `chatcmpl-${state.messageId}`,
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model: state.model,
+        choices: []
+      });
+      break;
+    }
+
     case "content_block_stop": {
       // Skip stop for built-in server tool blocks (web search)
       if (chunk.index === state.serverToolBlockIndex) {

@@ -270,10 +270,13 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display, bodyDisplay
       if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
       // Models that can disable thinking need the explicit adaptive switch.
       // Permanently adaptive models (Fable 5.1, Opus 5.5) accept effort directly and
-      // only need the switch to carry a valid display the client set explicitly on
-      // thinking.display; the display inferred for OpenAI clients is not added there.
+      // only need the switch to carry a display: the one the client set explicitly on
+      // thinking.display, or — on models that opt in via inferredThinkingDisplay —
+      // the "summarized" display inferred for OpenAI clients. Without it Opus 5.5
+      // streams no thinking at all (only pings) for minutes of xhigh reasoning.
       if (canDisable) body.thinking = { type: "adaptive", ...(display ? { display } : {}) };
       else if (bodyDisplay === "omitted" || bodyDisplay === "summarized") body.thinking = { type: "adaptive", display: bodyDisplay };
+      else if (display === "summarized" && caps.inferredThinkingDisplay) body.thinking = { type: "adaptive", display };
       else delete body.thinking;
       let level = toLevel(eff);
       // Keep the always-on clamp, but use the lowest supported level where the
